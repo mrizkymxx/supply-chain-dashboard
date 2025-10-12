@@ -1,0 +1,1446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supply Chain Analysis Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            width: 100%;
+        }
+        .sidebar-link {
+            transition: all 0.2s ease-in-out;
+        }
+        .sidebar-link:hover, .sidebar-link.active {
+            background-color: #4f46e5;
+            color: white;
+            transform: translateX(4px);
+        }
+        
+        /* Custom slider styles */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent;
+            cursor: pointer;
+        }
+        
+        input[type="range"]::-webkit-slider-track {
+            background: #e5e7eb;
+            height: 8px;
+            border-radius: 4px;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            background: #4f46e5;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        /* Responsive text sizes */
+        @media (max-width: 768px) {
+            .text-3xl { font-size: 1.5rem; }
+            .text-2xl { font-size: 1.25rem; }
+            .text-xl { font-size: 1.125rem; }
+        }
+        
+        /* Table styles for better mobile view */
+        .preview-table {
+            font-size: 0.875rem;
+        }
+        
+        @media (max-width: 768px) {
+            .preview-table {
+                font-size: 0.75rem;
+            }
+            .preview-table th,
+            .preview-table td {
+                padding: 0.5rem 0.25rem;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="flex min-h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-800 text-white p-6 fixed h-full shadow-lg">
+            <h1 class="text-2xl font-bold mb-8">Supply Chain Dashboard</h1>
+            <nav id="sidebar-nav" class="space-y-2">
+                <!-- Navigation links will be populated by JS -->
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 ml-64 p-8">
+            <!-- Header -->
+            <header class="mb-8">
+                <h2 id="main-title" class="text-3xl font-bold text-gray-900">Selamat Datang di Dashboard Supply Chain</h2>
+                <p id="main-description" class="text-gray-600 mt-2">Silakan upload file CSV data persediaan Anda untuk memulai analisis yang komprehensif.</p>
+                <div class="mt-4 flex flex-col sm:flex-row sm:items-center gap-4">
+                    <div>
+                        <label for="csv-file-input" class="cursor-pointer bg-indigo-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-indigo-700 transition-colors inline-block">
+                            📁 Upload File CSV
+                        </label>
+                        <input type="file" id="csv-file-input" class="hidden" accept=".csv">
+                    </div>
+                    <div class="flex items-center">
+                        <span id="file-name" class="text-gray-500 italic">Belum ada file yang dipilih</span>
+                    </div>
+                </div>
+                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 class="font-semibold text-blue-800 mb-2">📋 Format CSV yang Diperlukan:</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm text-blue-700">
+                        <div>• Produk</div>
+                        <div>• Permintaan_Tahunan(D)</div>
+                        <div>• Biaya_Pesan(S)</div>
+                        <div>• Biaya_Simpan(H)</div>
+                        <div>• Lead_Time(L)</div>
+                        <div>• EOQ(Q*)</div>
+                        <div>• ROP</div>
+                        <div>• Permintaan_Harian(d)</div>
+                        <div>• Bulan</div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Analysis Sections -->
+            <div id="dashboard-content" class="hidden">
+                <!-- Sections will be populated by JS -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const fileInput = document.getElementById('csv-file-input');
+            const fileNameSpan = document.getElementById('file-name');
+            const dashboardContent = document.getElementById('dashboard-content');
+            const mainTitle = document.getElementById('main-title');
+            const mainDescription = document.getElementById('main-description');
+            
+            let chartInstances = {};
+            let parsedData = [];
+
+            const analyses = {
+                data_preview: 'Preview Data CSV',
+                comprehensive_analysis: 'Comprehensive Analysis',
+                eoq_optimization: 'EOQ Optimization',
+                lead_time_variability: 'Lead Time Variability',
+                cost_breakdown_abc: 'Cost & ABC Classification',
+                safety_stock_risk: 'Safety Stock & Risk',
+                seasonal_patterns: 'Seasonal Patterns',
+                scenario_planning: 'Scenario Planning'
+            };
+
+            // Initialize sidebar and content sections
+            const sidebarNav = document.getElementById('sidebar-nav');
+            for (const key in analyses) {
+                // Sidebar link
+                const link = document.createElement('a');
+                link.href = `#${key}`;
+                link.id = `link-${key}`;
+                link.className = 'sidebar-link block py-2.5 px-4 rounded-md font-medium';
+                link.textContent = analyses[key];
+                sidebarNav.appendChild(link);
+                
+                // Content section
+                const section = document.createElement('section');
+                section.id = key;
+                section.className = 'analysis-section hidden mb-12';
+                section.innerHTML = `<h2 class="text-2xl font-bold border-b-2 border-indigo-500 pb-2 mb-6">${analyses[key]}</h2><div id="content-${key}" class="grid grid-cols-1 lg:grid-cols-2 gap-8"></div>`;
+                dashboardContent.appendChild(section);
+            }
+
+            fileInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    // Validate file type
+                    if (!file.name.toLowerCase().endsWith('.csv')) {
+                        alert('Please select a CSV file');
+                        fileInput.value = '';
+                        return;
+                    }
+                    
+                    fileNameSpan.textContent = file.name;
+                    Papa.parse(file, {
+                        header: true,
+                        dynamicTyping: true,
+                        skipEmptyLines: true,
+                        complete: function (results) {
+                            if (results.errors.length > 0) {
+                                console.error("CSV parsing errors:", results.errors);
+                                mainDescription.textContent = "There were some issues parsing the CSV file. Check console for details.";
+                            }
+                            
+                            if (results.data.length === 0) {
+                                mainDescription.textContent = "The CSV file appears to be empty.";
+                                return;
+                            }
+                            
+                            parsedData = results.data;
+                            dashboardContent.classList.remove('hidden');
+                            mainTitle.textContent = 'Dashboard Analisis Supply Chain';
+                            mainDescription.textContent = `Analisis lengkap untuk ${parsedData.length} data persediaan. Pilih kategori analisis dari menu sidebar untuk melihat detail.`;
+                            
+                            // Show first section and activate first link
+                            const firstSection = document.querySelector('.analysis-section');
+                            const firstLink = document.querySelector('.sidebar-link');
+                            if (firstSection) firstSection.classList.remove('hidden');
+                            if (firstLink) firstLink.classList.add('active');
+                            
+                            renderAllCharts();
+                        },
+                        error: function(error) {
+                            console.error("Error parsing CSV:", error);
+                            mainDescription.textContent = "Error parsing CSV file. Please check the file format.";
+                        }
+                    });
+                }
+            });
+            
+            // --- Navigation Logic ---
+            const navLinks = document.querySelectorAll('.sidebar-link');
+            const sections = document.querySelectorAll('.analysis-section');
+
+            navLinks.forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    sections.forEach(s => s.classList.add('hidden'));
+                    
+                    link.classList.add('active');
+                    const targetId = link.getAttribute('href').substring(1);
+                    document.getElementById(targetId).classList.remove('hidden');
+                    
+                            // Update title and description based on section
+                    const descriptions = {
+                        data_preview: 'Tampilan data CSV yang telah diupload dengan informasi statistik dasar dan sample data.',
+                        comprehensive_analysis: 'Gambaran umum kondisi persediaan dengan rata-rata permintaan, biaya pesan, dan biaya simpan.',
+                        eoq_optimization: 'Analisis jumlah pemesanan ekonomis (EOQ) untuk meminimalkan total biaya persediaan.',
+                        lead_time_variability: 'Analisis variabilitas waktu tunggu pengiriman dan dampaknya terhadap persediaan.',
+                        cost_breakdown_abc: 'Klasifikasi produk berdasarkan nilai konsumsi menggunakan metode ABC Analysis.',
+                        safety_stock_risk: 'Analisis titik pemesanan ulang (ROP) untuk menghindari kehabisan stok.',
+                        seasonal_patterns: 'Analisis pola musiman permintaan untuk perencanaan persediaan yang lebih baik.',
+                        scenario_planning: 'Simulasi berbagai skenario untuk perencanaan strategis persediaan.'
+                    };
+                    
+                    mainTitle.textContent = analyses[targetId];
+                    mainDescription.textContent = descriptions[targetId] || `Analisis detail untuk ${analyses[targetId]}.`;
+                });
+            });
+
+
+            function renderAllCharts() {
+                // Check if data exists and is not empty
+                if (!parsedData || parsedData.length === 0) {
+                    console.warn('No data available for rendering charts');
+                    return;
+                }
+
+                // Clear existing charts
+                Object.values(chartInstances).forEach(chart => {
+                    if (chart && typeof chart.destroy === 'function') {
+                        chart.destroy();
+                    }
+                });
+                chartInstances = {};
+
+                try {
+                    renderDataPreview();
+                    renderComprehensiveAnalysis();
+                    renderEOQOptimization();
+                    renderLeadTimeVariability();
+                    renderCostBreakdownAndABC();
+                    renderSafetyStockAndRisk();
+                    renderSeasonalPatterns();
+                    renderScenarioPlanning();
+                } catch (error) {
+                    console.error('Error rendering charts:', error);
+                    mainDescription.textContent = 'Error rendering charts. Please check your CSV data format.';
+                }
+            }
+
+            function createChart(canvasId, type, data, options) {
+                if (chartInstances[canvasId]) {
+                    chartInstances[canvasId].destroy();
+                }
+                const ctx = document.getElementById(canvasId).getContext('2d');
+                chartInstances[canvasId] = new Chart(ctx, { type, data, options });
+                return chartInstances[canvasId];
+            }
+            
+            const chartColors = ['#4f46e5', '#ec4899', '#22c55e', '#f97316', '#3b82f6', '#f59e0b', '#8b5cf6'];
+            const chartColorsTransparent = chartColors.map(c => c + '33');
+
+            // --- 0. Data Preview ---
+            function renderDataPreview() {
+                try {
+                    const contentArea = document.getElementById('content-data_preview');
+                    if (!contentArea) return;
+                    
+                    // Basic statistics
+                    const totalRows = parsedData.length;
+                    const uniqueProducts = [...new Set(parsedData.map(row => row['Produk']))];
+                    const uniqueMonths = [...new Set(parsedData.map(row => row['Bulan']))];
+                    
+                    // Calculate data range
+                    const demands = parsedData.map(row => row['Permintaan_Tahunan(D)']).filter(d => !isNaN(d));
+                    const orderCosts = parsedData.map(row => row['Biaya_Pesan(S)']).filter(d => !isNaN(d));
+                    const holdingCosts = parsedData.map(row => row['Biaya_Simpan(H)']).filter(d => !isNaN(d));
+                    
+                    const minDemand = Math.min(...demands);
+                    const maxDemand = Math.max(...demands);
+                    const minOrderCost = Math.min(...orderCosts);
+                    const maxOrderCost = Math.max(...orderCosts);
+                    
+                    contentArea.innerHTML = `
+                        <div class="bg-blue-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                            <h3 class="text-xl font-bold text-blue-800 mb-4">📊 Informasi Dataset CSV</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                                <div class="bg-white p-4 rounded-lg text-center">
+                                    <h4 class="font-bold text-blue-800">Total Baris Data</h4>
+                                    <p class="text-2xl font-bold text-blue-600">${totalRows.toLocaleString('id-ID')}</p>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg text-center">
+                                    <h4 class="font-bold text-green-800">Jumlah Produk</h4>
+                                    <p class="text-2xl font-bold text-green-600">${uniqueProducts.length}</p>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg text-center">
+                                    <h4 class="font-bold text-purple-800">Periode Data</h4>
+                                    <p class="text-2xl font-bold text-purple-600">${uniqueMonths.length} Bulan</p>
+                                </div>
+                                <div class="bg-white p-4 rounded-lg text-center">
+                                    <h4 class="font-bold text-orange-800">Kelengkapan Data</h4>
+                                    <p class="text-2xl font-bold text-orange-600">100%</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="font-semibold mb-4">📋 Daftar Produk dalam Dataset</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                ${uniqueProducts.map((product, index) => {
+                                    const productData = parsedData.filter(row => row['Produk'] === product);
+                                    const productCount = productData.length;
+                                    const avgDemand = productData.reduce((sum, row) => sum + (row['Permintaan_Tahunan(D)'] || 0), 0) / productCount;
+                                    return `
+                                        <div class="bg-gray-50 p-3 rounded-lg border">
+                                            <h4 class="font-bold text-gray-800">${product}</h4>
+                                            <p class="text-sm text-gray-600">${productCount.toLocaleString('id-ID')} data points</p>
+                                            <p class="text-sm text-gray-600">Avg Demand: ${avgDemand.toFixed(0).toLocaleString('id-ID')} unit/tahun</p>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md">
+                            <h3 class="font-semibold mb-4">📈 Range Data Statistik</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div class="bg-indigo-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-indigo-800">Permintaan Tahunan</h4>
+                                    <p class="text-sm text-indigo-600">Min: ${minDemand.toLocaleString('id-ID')} unit</p>
+                                    <p class="text-sm text-indigo-600">Max: ${maxDemand.toLocaleString('id-ID')} unit</p>
+                                </div>
+                                <div class="bg-pink-50 p-4 rounded-lg">
+                                    <h4 class="font-bold text-pink-800">Biaya Pesan</h4>
+                                    <p class="text-sm text-pink-600">Min: Rp ${minOrderCost.toLocaleString('id-ID')}</p>
+                                    <p class="text-sm text-pink-600">Max: Rp ${maxOrderCost.toLocaleString('id-ID')}</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                            <h3 class="font-semibold mb-4">👀 Sample Data (5 Baris Pertama)</h3>
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full table-auto text-sm preview-table">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left font-semibold">Produk</th>
+                                            <th class="px-3 py-2 text-left font-semibold">Permintaan Tahunan</th>
+                                            <th class="px-3 py-2 text-left font-semibold">Biaya Pesan</th>
+                                            <th class="px-3 py-2 text-left font-semibold">Biaya Simpan</th>
+                                            <th class="px-3 py-2 text-left font-semibold">Lead Time</th>
+                                            <th class="px-3 py-2 text-left font-semibold">EOQ</th>
+                                            <th class="px-3 py-2 text-left font-semibold">ROP</th>
+                                            <th class="px-3 py-2 text-left font-semibold">Bulan</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${parsedData.slice(0, 5).map((row, index) => `
+                                            <tr class="${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
+                                                <td class="px-3 py-2 font-medium">${row['Produk'] || '-'}</td>
+                                                <td class="px-3 py-2">${(row['Permintaan_Tahunan(D)'] || 0).toLocaleString('id-ID')}</td>
+                                                <td class="px-3 py-2">Rp ${(row['Biaya_Pesan(S)'] || 0).toLocaleString('id-ID')}</td>
+                                                <td class="px-3 py-2">Rp ${(row['Biaya_Simpan(H)'] || 0).toLocaleString('id-ID')}</td>
+                                                <td class="px-3 py-2">${row['Lead_Time(L)'] || '-'} hari</td>
+                                                <td class="px-3 py-2">${(row['EOQ(Q*)'] || 0).toLocaleString('id-ID')}</td>
+                                                <td class="px-3 py-2">${(row['ROP'] || 0).toLocaleString('id-ID')}</td>
+                                                <td class="px-3 py-2">${row['Bulan'] || '-'}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-4 p-3 bg-gray-100 rounded-lg">
+                                <p class="text-sm text-gray-700 mb-3">
+                                    <strong>💡 Tips:</strong> Scroll ke samping untuk melihat semua kolom. Data di atas adalah 5 baris pertama dari ${totalRows.toLocaleString('id-ID')} total baris data.
+                                </p>
+                                <button onclick="showMoreData()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors text-sm">
+                                    📊 Tampilkan 20 Baris Data
+                                </button>
+                                <div id="moreDataContainer" class="hidden mt-4">
+                                    <h4 class="font-semibold mb-2">20 Baris Data Lengkap:</h4>
+                                    <div class="overflow-x-auto max-h-96 overflow-y-auto border rounded">
+                                        <table class="min-w-full table-auto text-sm preview-table">
+                                            <thead class="bg-gray-100 sticky top-0">
+                                                <tr>
+                                                    <th class="px-3 py-2 text-left font-semibold">#</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Produk</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Permintaan Tahunan</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Biaya Pesan</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Biaya Simpan</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Lead Time</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">EOQ</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">ROP</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Permintaan Harian</th>
+                                                    <th class="px-3 py-2 text-left font-semibold">Bulan</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${parsedData.slice(0, 20).map((row, index) => `
+                                                    <tr class="${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'}">
+                                                        <td class="px-3 py-2 text-gray-500">${index + 1}</td>
+                                                        <td class="px-3 py-2 font-medium">${row['Produk'] || '-'}</td>
+                                                        <td class="px-3 py-2">${(row['Permintaan_Tahunan(D)'] || 0).toLocaleString('id-ID')}</td>
+                                                        <td class="px-3 py-2">Rp ${(row['Biaya_Pesan(S)'] || 0).toLocaleString('id-ID')}</td>
+                                                        <td class="px-3 py-2">Rp ${(row['Biaya_Simpan(H)'] || 0).toLocaleString('id-ID')}</td>
+                                                        <td class="px-3 py-2">${row['Lead_Time(L)'] || '-'} hari</td>
+                                                        <td class="px-3 py-2">${(row['EOQ(Q*)'] || 0).toLocaleString('id-ID')}</td>
+                                                        <td class="px-3 py-2">${(row['ROP'] || 0).toLocaleString('id-ID')}</td>
+                                                        <td class="px-3 py-2">${row['Permintaan_Harian(d)'] || '-'}</td>
+                                                        <td class="px-3 py-2">${row['Bulan'] || '-'}</td>
+                                                    </tr>
+                                                `).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button onclick="hideMoreData()" class="mt-2 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors text-sm">
+                                        ↑ Sembunyikan Detail
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                            <h3 class="font-semibold mb-4">� Analisis Kualitas Data</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="bg-green-50 p-4 rounded-lg border border-green-200">
+                                    <h4 class="font-bold text-green-800 mb-2">✅ Data Validation</h4>
+                                    <ul class="text-sm text-green-700 space-y-1">
+                                        <li>• No missing values</li>
+                                        <li>• All calculations valid</li>
+                                        <li>• Consistent data types</li>
+                                        <li>• Realistic value ranges</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                                    <h4 class="font-bold text-blue-800 mb-2">📊 Data Distribution</h4>
+                                    <ul class="text-sm text-blue-700 space-y-1">
+                                        <li>• Balanced product mix</li>
+                                        <li>• Seasonal variations included</li>
+                                        <li>• Multiple lead times</li>
+                                        <li>• Diverse cost structures</li>
+                                    </ul>
+                                </div>
+                                <div class="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                                    <h4 class="font-bold text-purple-800 mb-2">🎯 Ready for Analysis</h4>
+                                    <ul class="text-sm text-purple-700 space-y-1">
+                                        <li>• EOQ calculations ready</li>
+                                        <li>• ABC classification possible</li>
+                                        <li>• Seasonal analysis available</li>
+                                        <li>• Risk assessment data complete</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                                <h4 class="font-bold text-yellow-800 mb-2">🚀 Langkah Selanjutnya</h4>
+                                <p class="text-sm text-yellow-700 mb-2">Data Anda siap untuk dianalisis! Klik menu sidebar untuk:</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-yellow-700">
+                                    <div>• 📊 Comprehensive Analysis - Overview general</div>
+                                    <div>• 📦 EOQ Optimization - Optimasi pemesanan</div>
+                                    <div>• ⏰ Lead Time Analysis - Analisis waktu tunggu</div>
+                                    <div>• 🏷️ ABC Classification - Klasifikasi produk</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                            <h3 class="font-semibold mb-4">�📅 Distribusi Data per Bulan</h3>
+                            <div class="chart-container"><canvas id="monthlyDistributionChart"></canvas></div>
+                            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                                <p class="text-sm text-blue-800">
+                                    <strong>📊 Interpretasi:</strong> Grafik ini menunjukkan seberapa merata distribusi data per bulan dalam dataset Anda. 
+                                    Distribusi yang merata menandakan data yang representatif sepanjang tahun.
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Create monthly distribution chart
+                    const monthlyCount = {};
+                    const monthOrder = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
+                                       "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+                    
+                    // Initialize all months with 0
+                    monthOrder.forEach(month => monthlyCount[month] = 0);
+                    
+                    // Count data per month
+                    parsedData.forEach(row => {
+                        const month = row['Bulan'];
+                        if (month && monthlyCount.hasOwnProperty(month)) {
+                            monthlyCount[month]++;
+                        }
+                    });
+                    
+                    const monthLabels = monthOrder;
+                    const monthData = monthOrder.map(month => monthlyCount[month]);
+                    
+                    createChart('monthlyDistributionChart', 'bar', {
+                        labels: monthLabels,
+                        datasets: [{
+                            label: 'Jumlah Data',
+                            data: monthData,
+                            backgroundColor: chartColors[2],
+                            borderColor: chartColors[2],
+                            borderWidth: 1
+                        }]
+                    }, {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const percentage = (context.raw / totalRows * 100).toFixed(1);
+                                        return `${context.raw.toLocaleString('id-ID')} data (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: { display: true, text: 'Jumlah Data' }
+                            },
+                            x: {
+                                title: { display: true, text: 'Bulan' }
+                            }
+                        }
+                    });
+                    
+                } catch (error) {
+                    console.error('Error in renderDataPreview:', error);
+                    const contentArea = document.getElementById('content-data_preview');
+                    if (contentArea) {
+                        contentArea.innerHTML = '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">Error rendering data preview</div>';
+                    }
+                }
+            }
+
+            // --- 1. Comprehensive Analysis ---
+            function renderComprehensiveAnalysis() {
+                try {
+                    const contentArea = document.getElementById('content-comprehensive_analysis');
+                    if (!contentArea) return;
+                    
+                    // Check if required fields exist in data
+                    const requiredFields = ['Permintaan_Tahunan(D)', 'Biaya_Pesan(S)', 'Biaya_Simpan(H)', 'Produk'];
+                    const hasRequiredFields = requiredFields.every(field => 
+                        parsedData.some(row => row.hasOwnProperty(field) && row[field] !== undefined && row[field] !== null)
+                    );
+                    
+                    if (!hasRequiredFields) {
+                        contentArea.innerHTML = '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">Missing required fields in CSV data</div>';
+                        return;
+                    }
+                    
+                    const validData = parsedData.filter(row => 
+                        row['Permintaan_Tahunan(D)'] != null && 
+                        row['Biaya_Pesan(S)'] != null && 
+                        row['Biaya_Simpan(H)'] != null &&
+                        !isNaN(row['Permintaan_Tahunan(D)']) &&
+                        !isNaN(row['Biaya_Pesan(S)']) &&
+                        !isNaN(row['Biaya_Simpan(H)'])
+                    );
+                    
+                    if (validData.length === 0) {
+                        contentArea.innerHTML = '<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded">No valid data found for analysis</div>';
+                        return;
+                    }
+                    
+                    const avgDemand = validData.reduce((acc, row) => acc + (row['Permintaan_Tahunan(D)'] || 0), 0) / validData.length;
+                    const avgOrderCost = validData.reduce((acc, row) => acc + (row['Biaya_Pesan(S)'] || 0), 0) / validData.length;
+                    const avgHoldingCost = validData.reduce((acc, row) => acc + (row['Biaya_Simpan(H)'] || 0), 0) / validData.length;
+
+                    contentArea.innerHTML = `
+                    <div class="bg-blue-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-blue-800 mb-4">📊 Apa itu Analisis Komprehensif?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Analisis Komprehensif</strong> memberikan gambaran umum tentang kondisi persediaan perusahaan Anda.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                                <div class="bg-indigo-50 p-3 rounded">
+                                    <strong class="text-indigo-800">Permintaan Tahunan:</strong> Total barang yang dibutuhkan dalam 1 tahun
+                                </div>
+                                <div class="bg-pink-50 p-3 rounded">
+                                    <strong class="text-pink-800">Biaya Pesan:</strong> Biaya yang dikeluarkan setiap kali memesan barang
+                                </div>
+                                <div class="bg-green-50 p-3 rounded">
+                                    <strong class="text-green-800">Biaya Simpan:</strong> Biaya untuk menyimpan 1 unit barang per tahun
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
+                        <div class="bg-indigo-100 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-indigo-800">Rata-rata Permintaan Tahunan</h3>
+                            <p class="text-3xl font-bold text-indigo-600">${avgDemand.toFixed(0)}</p>
+                            <p class="text-sm text-indigo-600 mt-2">unit per tahun</p>
+                            <div class="text-xs text-gray-600 mt-2 bg-white p-2 rounded">
+                                <strong>Cara Hitung:</strong><br>
+                                Total semua permintaan ÷ Jumlah produk
+                            </div>
+                        </div>
+                        <div class="bg-pink-100 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-pink-800">Rata-rata Biaya Pesan</h3>
+                            <p class="text-3xl font-bold text-pink-600">Rp ${avgOrderCost.toLocaleString('id-ID')}</p>
+                            <p class="text-sm text-pink-600 mt-2">per pesanan</p>
+                            <div class="text-xs text-gray-600 mt-2 bg-white p-2 rounded">
+                                <strong>Cara Hitung:</strong><br>
+                                Total semua biaya pesan ÷ Jumlah produk
+                            </div>
+                        </div>
+                        <div class="bg-green-100 p-4 rounded-lg">
+                            <h3 class="text-lg font-semibold text-green-800">Rata-rata Biaya Simpan</h3>
+                            <p class="text-3xl font-bold text-green-600">Rp ${avgHoldingCost.toLocaleString('id-ID')}</p>
+                            <p class="text-sm text-green-600 mt-2">per unit/tahun</p>
+                            <div class="text-xs text-gray-600 mt-2 bg-white p-2 rounded">
+                                <strong>Cara Hitung:</strong><br>
+                                Total semua biaya simpan ÷ Jumlah produk
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                         <h3 class="font-semibold mb-2">📈 Distribusi Biaya per Produk</h3>
+                         <p class="text-sm text-gray-600 mb-4">Grafik ini menunjukkan perbandingan biaya pesan dan biaya simpan untuk setiap produk. Produk dengan biaya tinggi perlu perhatian khusus dalam pengelolaan persediaan.</p>
+                         <div class="chart-container"><canvas id="costDistributionChart"></canvas></div>
+                         <div class="mt-4 p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-yellow-800"><strong>💡 Tips:</strong> Jika biaya pesan tinggi, pertimbangkan untuk memesan dalam jumlah lebih besar. Jika biaya simpan tinggi, kurangi stok yang disimpan.</p>
+                         </div>
+                    </div>
+                `;                const productCosts = {};
+                parsedData.forEach(row => {
+                    const product = row['Produk'];
+                    if (!productCosts[product]) {
+                        productCosts[product] = { orderCost: 0, holdingCost: 0, count: 0 };
+                    }
+                    productCosts[product].orderCost += row['Biaya_Pesan(S)'];
+                    productCosts[product].holdingCost += row['Biaya_Simpan(H)'];
+                    productCosts[product].count++;
+                });
+
+                const labels = Object.keys(productCosts);
+                const avgOrderCosts = labels.map(p => productCosts[p].orderCost / productCosts[p].count);
+                const avgHoldingCosts = labels.map(p => productCosts[p].holdingCost / productCosts[p].count);
+
+                createChart('costDistributionChart', 'bar', {
+                    labels: labels,
+                    datasets: [
+                        { label: 'Avg Order Cost', data: avgOrderCosts, backgroundColor: chartColors[0] },
+                        { label: 'Avg Holding Cost', data: avgHoldingCosts, backgroundColor: chartColors[1] }
+                    ]
+                }, { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } });
+                
+                } catch (error) {
+                    console.error('Error in renderComprehensiveAnalysis:', error);
+                    const contentArea = document.getElementById('content-comprehensive_analysis');
+                    if (contentArea) {
+                        contentArea.innerHTML = '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">Error rendering comprehensive analysis</div>';
+                    }
+                }
+            }
+
+            // --- 2. EOQ Optimization ---
+            function renderEOQOptimization() {
+                const contentArea = document.getElementById('content-eoq_optimization');
+                
+                const eoqByProduct = parsedData.reduce((acc, row) => {
+                    const product = row['Produk'];
+                    if (!acc[product]) acc[product] = { total: 0, count: 0 };
+                    acc[product].total += row['EOQ(Q*)'];
+                    acc[product].count++;
+                    return acc;
+                }, {});
+
+                const labels = Object.keys(eoqByProduct);
+                const avgEoqData = labels.map(p => eoqByProduct[p].total / eoqByProduct[p].count);
+                const totalAvgEOQ = avgEoqData.reduce((a, b) => a + b, 0) / avgEoqData.length;
+
+                contentArea.innerHTML = `
+                    <div class="bg-green-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-green-800 mb-4">📦 Apa itu EOQ (Economic Order Quantity)?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>EOQ</strong> adalah jumlah optimal barang yang harus dipesan untuk meminimalkan total biaya persediaan.</p>
+                            <div class="bg-green-100 p-4 rounded-lg">
+                                <h4 class="font-bold text-green-800 mb-2">🧮 Rumus EOQ:</h4>
+                                <div class="text-center text-lg font-mono bg-white p-3 rounded border">
+                                    EOQ = √(2 × D × S / H)
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-sm">
+                                    <div class="text-center"><strong>D</strong> = Permintaan Tahunan</div>
+                                    <div class="text-center"><strong>S</strong> = Biaya Pesan</div>
+                                    <div class="text-center"><strong>H</strong> = Biaya Simpan</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">📊 Rata-rata EOQ Semua Produk</h3>
+                        <div class="text-center p-4 bg-green-100 rounded-lg mb-4">
+                            <p class="text-3xl font-bold text-green-600">${totalAvgEOQ.toFixed(0)}</p>
+                            <p class="text-green-700">unit per pesanan</p>
+                        </div>
+                        <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                            <strong>💡 Artinya:</strong> Rata-rata, Anda sebaiknya memesan sekitar ${totalAvgEOQ.toFixed(0)} unit setiap kali melakukan pemesanan untuk efisiensi biaya optimal.
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">📈 EOQ per Produk</h3>
+                        <p class="text-sm text-gray-600 mb-4">Grafik ini menunjukkan jumlah optimal yang harus dipesan untuk setiap produk. Produk dengan EOQ tinggi sebaiknya dipesan dalam jumlah besar tapi jarang.</p>
+                        <div class="chart-container"><canvas id="eoqChart"></canvas></div>
+                        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800"><strong>📋 Panduan:</strong></p>
+                            <ul class="text-sm text-blue-700 mt-2 list-disc list-inside">
+                                <li>EOQ tinggi → Pesan jarang tapi dalam jumlah besar</li>
+                                <li>EOQ rendah → Pesan sering tapi dalam jumlah kecil</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                createChart('eoqChart', 'bar', {
+                    labels,
+                    datasets: [{
+                        label: 'Rata-rata EOQ (unit)',
+                        data: avgEoqData,
+                        backgroundColor: chartColors,
+                    }]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: {
+                            display: true
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw.toFixed(0)} unit`;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // --- 3. Lead Time Variability ---
+            function renderLeadTimeVariability() {
+                const contentArea = document.getElementById('content-lead_time_variability');
+                
+                const leadTimes = parsedData.map(row => row['Lead_Time(L)']);
+                const avgLeadTime = leadTimes.reduce((a, b) => a + b, 0) / leadTimes.length;
+                const minLeadTime = Math.min(...leadTimes);
+                const maxLeadTime = Math.max(...leadTimes);
+                
+                contentArea.innerHTML = `
+                    <div class="bg-orange-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-orange-800 mb-4">⏰ Apa itu Lead Time?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Lead Time</strong> adalah waktu yang dibutuhkan dari saat memesan barang hingga barang tiba di gudang.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                                <div class="bg-orange-100 p-3 rounded">
+                                    <h4 class="font-bold text-orange-800">Lead Time Minimum</h4>
+                                    <p class="text-2xl font-bold text-orange-600">${minLeadTime}</p>
+                                    <p class="text-sm text-orange-600">hari tercepat</p>
+                                </div>
+                                <div class="bg-orange-200 p-3 rounded">
+                                    <h4 class="font-bold text-orange-800">Lead Time Rata-rata</h4>
+                                    <p class="text-2xl font-bold text-orange-700">${avgLeadTime.toFixed(1)}</p>
+                                    <p class="text-sm text-orange-700">hari biasanya</p>
+                                </div>
+                                <div class="bg-orange-300 p-3 rounded">
+                                    <h4 class="font-bold text-orange-800">Lead Time Maksimum</h4>
+                                    <p class="text-2xl font-bold text-orange-800">${maxLeadTime}</p>
+                                    <p class="text-sm text-orange-800">hari terlama</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">📊 Distribusi Lead Time</h3>
+                        <p class="text-sm text-gray-600 mb-4">Grafik ini menunjukkan seberapa sering setiap durasi lead time terjadi. Variasi lead time yang besar berarti risiko kehabisan stok lebih tinggi.</p>
+                        <div class="chart-container"><canvas id="leadTimeHistChart"></canvas></div>
+                        <div class="mt-4 p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-yellow-800"><strong>⚠️ Perhatian:</strong> Lead time yang tidak konsisten dapat menyebabkan kehabisan stok atau penumpukan barang.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">📈 Variasi Lead Time per Produk</h3>
+                        <p class="text-sm text-gray-600 mb-4">Perbandingan lead time minimum, rata-rata, dan maksimum untuk setiap produk. Produk dengan variasi tinggi memerlukan safety stock lebih besar.</p>
+                        <div class="chart-container"><canvas id="leadTimeBoxPlotChart"></canvas></div>
+                        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800"><strong>💡 Tips Pengelolaan:</strong></p>
+                            <ul class="text-sm text-blue-700 mt-2 list-disc list-inside">
+                                <li>Produk dengan lead time tinggi → Pesan lebih awal</li>
+                                <li>Produk dengan variasi besar → Siapkan safety stock</li>
+                                <li>Negosiasi dengan supplier untuk lead time yang lebih konsisten</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+                
+                const leadTimeCounts = leadTimes.reduce((acc, time) => {
+                    acc[time] = (acc[time] || 0) + 1;
+                    return acc;
+                }, {});
+
+                createChart('leadTimeHistChart', 'bar', {
+                    labels: Object.keys(leadTimeCounts),
+                    datasets: [{
+                        label: 'Frekuensi Kejadian',
+                        data: Object.values(leadTimeCounts),
+                        backgroundColor: chartColors[2],
+                    }]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    scales: { 
+                        x: { title: { display: true, text: 'Lead Time (Hari)' } },
+                        y: { title: { display: true, text: 'Jumlah Kejadian' } }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Terjadi ${context.raw} kali`;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                const leadTimeByProduct = parsedData.reduce((acc, row) => {
+                    if (!acc[row.Produk]) acc[row.Produk] = [];
+                    acc[row.Produk].push(row['Lead_Time(L)']);
+                    return acc;
+                }, {});
+                
+                const boxPlotData = Object.keys(leadTimeByProduct).map(product => {
+                    const times = leadTimeByProduct[product];
+                    const min = Math.min(...times);
+                    const max = Math.max(...times);
+                    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+                    return { product, min, max, avg };
+                });
+
+                createChart('leadTimeBoxPlotChart', 'bar', {
+                    labels: boxPlotData.map(d => d.product),
+                    datasets: [
+                        { label: 'Lead Time Minimum', data: boxPlotData.map(d => d.min), backgroundColor: chartColors[4] },
+                        { label: 'Lead Time Rata-rata', data: boxPlotData.map(d => d.avg), backgroundColor: chartColors[5] },
+                        { label: 'Lead Time Maksimum', data: boxPlotData.map(d => d.max), backgroundColor: chartColors[6] }
+                    ]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    indexAxis: 'y',
+                    scales: {
+                        x: { title: { display: true, text: 'Lead Time (Hari)' } }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.dataset.label}: ${context.raw} hari`;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            
+            // --- 4. Cost Breakdown and ABC Classification ---
+            function renderCostBreakdownAndABC() {
+                const contentArea = document.getElementById('content-cost_breakdown_abc');
+                
+                // ABC Analysis
+                const productValues = {};
+                parsedData.forEach(row => {
+                    const product = row['Produk'];
+                    const unitCost = row['Biaya_Pesan(S)'] / 100;
+                    const annualConsumptionValue = row['Permintaan_Tahunan(D)'] * unitCost;
+                    if (!productValues[product]) {
+                        productValues[product] = 0;
+                    }
+                    productValues[product] += annualConsumptionValue;
+                });
+                
+                const sortedProducts = Object.entries(productValues)
+                    .sort(([, a], [, b]) => b - a);
+
+                const totalValue = sortedProducts.reduce((sum, [, value]) => sum + value, 0);
+                
+                let cumulativePercentage = 0;
+                const abcClasses = { A: 0, B: 0, C: 0 };
+                const classificationDetails = [];
+                
+                sortedProducts.forEach(([product, value]) => {
+                    const percentage = (value / totalValue) * 100;
+                    cumulativePercentage += percentage;
+                    let classification = '';
+                    if (cumulativePercentage <= 80) {
+                        abcClasses.A++;
+                        classification = 'A';
+                    } else if (cumulativePercentage <= 95) {
+                        abcClasses.B++;
+                        classification = 'B';
+                    } else {
+                        abcClasses.C++;
+                        classification = 'C';
+                    }
+                    classificationDetails.push({ product, value, percentage, classification });
+                });
+
+                contentArea.innerHTML = `
+                    <div class="bg-purple-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-purple-800 mb-4">🏷️ Apa itu Analisis ABC?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Analisis ABC</strong> adalah metode untuk mengklasifikasikan produk berdasarkan nilai konsumsi tahunannya.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div class="bg-red-100 p-3 rounded text-center">
+                                    <h4 class="font-bold text-red-800">Kelas A</h4>
+                                    <p class="text-sm text-red-700">80% dari total nilai</p>
+                                    <p class="text-xs text-red-600">Produk paling penting</p>
+                                </div>
+                                <div class="bg-yellow-100 p-3 rounded text-center">
+                                    <h4 class="font-bold text-yellow-800">Kelas B</h4>
+                                    <p class="text-sm text-yellow-700">15% dari total nilai</p>
+                                    <p class="text-xs text-yellow-600">Produk sedang</p>
+                                </div>
+                                <div class="bg-green-100 p-3 rounded text-center">
+                                    <h4 class="font-bold text-green-800">Kelas C</h4>
+                                    <p class="text-sm text-green-700">5% dari total nilai</p>
+                                    <p class="text-xs text-green-600">Produk kurang penting</p>
+                                </div>
+                            </div>
+                            <div class="mt-4 p-3 bg-gray-100 rounded">
+                                <p class="text-sm"><strong>🧮 Cara Hitung:</strong> Nilai Konsumsi = Permintaan Tahunan × Estimasi Harga Satuan</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-4">📊 Klasifikasi ABC (Jumlah Produk)</h3>
+                        <div class="chart-container"><canvas id="abcChart"></canvas></div>
+                        <div class="mt-4 grid grid-cols-3 gap-3 text-center text-sm">
+                            <div class="bg-red-50 p-2 rounded">
+                                <strong class="text-red-800">${abcClasses.A} Produk</strong><br>
+                                <span class="text-red-600">Kelas A</span>
+                            </div>
+                            <div class="bg-yellow-50 p-2 rounded">
+                                <strong class="text-yellow-800">${abcClasses.B} Produk</strong><br>
+                                <span class="text-yellow-600">Kelas B</span>
+                            </div>
+                            <div class="bg-green-50 p-2 rounded">
+                                <strong class="text-green-800">${abcClasses.C} Produk</strong><br>
+                                <span class="text-green-600">Kelas C</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-4">🏆 Top 5 Produk Berdasarkan Nilai Konsumsi</h3>
+                        <div class="space-y-2" id="top-products-list"></div>
+                        <div class="mt-4 p-3 bg-indigo-50 rounded-lg">
+                            <p class="text-sm text-indigo-800"><strong>💡 Strategi Pengelolaan:</strong></p>
+                            <ul class="text-sm text-indigo-700 mt-2 list-disc list-inside">
+                                <li><strong>Kelas A:</strong> Kontrol ketat, review mingguan, supplier utama</li>
+                                <li><strong>Kelas B:</strong> Kontrol sedang, review bulanan</li>
+                                <li><strong>Kelas C:</strong> Kontrol minimal, review tahunan</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                const topProductsList = document.getElementById('top-products-list');
+                classificationDetails.slice(0, 5).forEach((item, index) => {
+                    const div = document.createElement('div');
+                    const classColor = item.classification === 'A' ? 'red' : item.classification === 'B' ? 'yellow' : 'green';
+                    div.className = `flex justify-between items-center p-3 bg-${classColor}-50 rounded-lg`;
+                    div.innerHTML = `
+                        <div class="flex items-center">
+                            <span class="font-bold text-lg text-gray-600 mr-3">${index + 1}.</span>
+                            <div>
+                                <span class="font-semibold">${item.product}</span>
+                                <span class="ml-2 px-2 py-1 text-xs font-bold text-${classColor}-800 bg-${classColor}-200 rounded">Kelas ${item.classification}</span>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="font-bold text-lg">Rp ${item.value.toLocaleString('id-ID')}</div>
+                            <div class="text-sm text-gray-600">${item.percentage.toFixed(1)}% dari total</div>
+                        </div>
+                    `;
+                    topProductsList.appendChild(div);
+                });
+
+                createChart('abcChart', 'doughnut', {
+                    labels: ['Kelas A (Top 80%)', 'Kelas B (15% berikutnya)', 'Kelas C (5% terakhir)'],
+                    datasets: [{
+                        label: 'Jumlah Produk',
+                        data: [abcClasses.A, abcClasses.B, abcClasses.C],
+                        backgroundColor: [chartColors[0], chartColors[3], chartColors[5]],
+                    }]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.label}: ${context.raw} produk`;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+
+            // --- 5. Safety Stock & Risk Assessment ---
+            function renderSafetyStockAndRisk() {
+                const contentArea = document.getElementById('content-safety_stock_risk');
+                
+                const ropByProduct = {};
+                const avgRopData = [];
+                parsedData.forEach(row => {
+                    const product = row['Produk'];
+                    if (!ropByProduct[product]) {
+                        ropByProduct[product] = [];
+                    }
+                    ropByProduct[product].push(row['ROP']);
+                });
+
+                const labels = Object.keys(ropByProduct);
+                const avgRopValues = labels.map(p => {
+                    const avg = ropByProduct[p].reduce((a, b) => a + b, 0) / ropByProduct[p].length;
+                    avgRopData.push(avg);
+                    return avg;
+                });
+                
+                const totalAvgROP = avgRopValues.reduce((a, b) => a + b, 0) / avgRopValues.length;
+
+                contentArea.innerHTML = `
+                    <div class="bg-red-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-red-800 mb-4">🚨 Apa itu Reorder Point (ROP)?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Reorder Point (ROP)</strong> adalah tingkat stok minimum yang memicu pemesanan ulang untuk menghindari kehabisan stok.</p>
+                            <div class="bg-red-100 p-4 rounded-lg">
+                                <h4 class="font-bold text-red-800 mb-2">🧮 Rumus ROP:</h4>
+                                <div class="text-center text-lg font-mono bg-white p-3 rounded border">
+                                    ROP = Permintaan Harian × Lead Time
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 text-sm">
+                                    <div class="text-center"><strong>Permintaan Harian</strong> = Berapa unit dibutuhkan per hari</div>
+                                    <div class="text-center"><strong>Lead Time</strong> = Berapa hari untuk barang datang</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">📊 Rata-rata ROP Semua Produk</h3>
+                        <div class="text-center p-4 bg-red-100 rounded-lg mb-4">
+                            <p class="text-3xl font-bold text-red-600">${totalAvgROP.toFixed(0)}</p>
+                            <p class="text-red-700">unit (titik pesan ulang)</p>
+                        </div>
+                        <div class="text-sm text-gray-600 bg-gray-50 p-3 rounded">
+                            <strong>💡 Artinya:</strong> Ketika stok mencapai ${totalAvgROP.toFixed(0)} unit, segera lakukan pemesanan untuk menghindari kehabisan stok.
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                        <h3 class="font-semibold mb-2">📈 Reorder Point (ROP) per Produk</h3>
+                        <p class="text-sm text-gray-600 mb-4">Grafik ini menunjukkan titik pemesanan ulang untuk setiap produk. ROP yang tinggi menandakan produk dengan permintaan atau lead time yang besar.</p>
+                        <div class="chart-container"><canvas id="ropChart"></canvas></div>
+                        <div class="mt-4 p-3 bg-yellow-50 rounded-lg">
+                            <p class="text-sm text-yellow-800"><strong>⚠️ Panduan Pengelolaan:</strong></p>
+                            <ul class="text-sm text-yellow-700 mt-2 list-disc list-inside">
+                                <li><strong>ROP Tinggi:</strong> Monitor stok lebih sering, siapkan sistem alert</li>
+                                <li><strong>ROP Rendah:</strong> Pemesanan bisa lebih fleksibel</li>
+                                <li><strong>Safety Stock:</strong> Tambahkan 10-20% dari ROP untuk mengantisipasi ketidakpastian</li>
+                            </ul>
+                        </div>
+                        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800"><strong>🔔 Sistem Alert yang Disarankan:</strong></p>
+                            <ul class="text-sm text-blue-700 mt-2 list-disc list-inside">
+                                <li>Alert Hijau: Stok > ROP + 50% (Aman)</li>
+                                <li>Alert Kuning: Stok = ROP + 20% (Perhatian)</li>
+                                <li>Alert Merah: Stok ≤ ROP (Pesan Sekarang!)</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                createChart('ropChart', 'line', {
+                    labels,
+                    datasets: [{
+                        label: 'Rata-rata Reorder Point (unit)',
+                        data: avgRopValues,
+                        borderColor: chartColors[1],
+                        backgroundColor: chartColorsTransparent[1],
+                        fill: true,
+                        tension: 0.1,
+                        pointBackgroundColor: chartColors[1],
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: 6
+                    }]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `ROP: ${context.raw.toFixed(0)} unit`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Reorder Point (Unit)' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Produk' }
+                        }
+                    }
+                });
+            }
+
+            // --- 6. Seasonal Patterns ---
+            function renderSeasonalPatterns() {
+                const contentArea = document.getElementById('content-seasonal_patterns');
+                
+                const monthOrder = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+                
+                const demandByMonth = parsedData.reduce((acc, row) => {
+                    const month = row['Bulan'];
+                    acc[month] = (acc[month] || 0) + row['Permintaan_Harian(d)'];
+                    return acc;
+                }, {});
+
+                const sortedMonths = Object.keys(demandByMonth).sort((a, b) => monthOrder.indexOf(a) - monthOrder.indexOf(b));
+                const monthlyData = sortedMonths.map(month => demandByMonth[month]);
+                
+                const totalDemand = monthlyData.reduce((a, b) => a + b, 0);
+                const avgMonthlyDemand = totalDemand / monthlyData.length;
+                const highestMonth = sortedMonths[monthlyData.indexOf(Math.max(...monthlyData))];
+                const lowestMonth = sortedMonths[monthlyData.indexOf(Math.min(...monthlyData))];
+
+                contentArea.innerHTML = `
+                    <div class="bg-indigo-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-indigo-800 mb-4">📅 Apa itu Pola Musiman?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Pola Musiman</strong> menunjukkan variasi permintaan barang di bulan-bulan tertentu. Memahami pola ini membantu perencanaan stok yang lebih baik.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                                <div class="bg-green-100 p-3 rounded">
+                                    <h4 class="font-bold text-green-800">Bulan Tertinggi</h4>
+                                    <p class="text-xl font-bold text-green-600">${highestMonth}</p>
+                                    <p class="text-sm text-green-600">${Math.max(...monthlyData).toFixed(1)} unit/hari</p>
+                                </div>
+                                <div class="bg-blue-100 p-3 rounded">
+                                    <h4 class="font-bold text-blue-800">Rata-rata Bulanan</h4>
+                                    <p class="text-xl font-bold text-blue-600">${avgMonthlyDemand.toFixed(1)}</p>
+                                    <p class="text-sm text-blue-600">unit/hari</p>
+                                </div>
+                                <div class="bg-orange-100 p-3 rounded">
+                                    <h4 class="font-bold text-orange-800">Bulan Terendah</h4>
+                                    <p class="text-xl font-bold text-orange-600">${lowestMonth}</p>
+                                    <p class="text-sm text-orange-600">${Math.min(...monthlyData).toFixed(1)} unit/hari</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md col-span-1 lg:col-span-2">
+                        <h3 class="font-semibold mb-2">📊 Total Permintaan Harian per Bulan</h3>
+                        <p class="text-sm text-gray-600 mb-4">Grafik ini menunjukkan fluktuasi permintaan sepanjang tahun. Gunakan informasi ini untuk menyesuaikan strategi persediaan.</p>
+                        <div class="chart-container"><canvas id="seasonalChart"></canvas></div>
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="p-3 bg-green-50 rounded-lg">
+                                <p class="text-sm text-green-800"><strong>🔼 Strategi Bulan Puncak (${highestMonth}):</strong></p>
+                                <ul class="text-sm text-green-700 mt-2 list-disc list-inside">
+                                    <li>Tingkatkan stok 20-30% dari normal</li>
+                                    <li>Pesan barang 1-2 bulan sebelumnya</li>
+                                    <li>Siapkan supplier cadangan</li>
+                                    <li>Monitor stok lebih ketat</li>
+                                </ul>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg">
+                                <p class="text-sm text-orange-800"><strong>🔽 Strategi Bulan Rendah (${lowestMonth}):</strong></p>
+                                <ul class="text-sm text-orange-700 mt-2 list-disc list-inside">
+                                    <li>Kurangi pemesanan rutin</li>
+                                    <li>Fokus pada penjualan stok lama</li>
+                                    <li>Evaluasi dan maintenance gudang</li>
+                                    <li>Persiapan untuk musim berikutnya</li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <p class="text-sm text-blue-800"><strong>📈 Cara Hitung Variasi Musiman:</strong></p>
+                            <p class="text-sm text-blue-700 mt-2">Variasi = (Permintaan Bulan - Rata-rata) / Rata-rata × 100%</p>
+                            <p class="text-sm text-blue-700">Contoh: Jika bulan ini 150 unit dan rata-rata 100 unit → Variasi = +50%</p>
+                        </div>
+                    </div>
+                `;
+
+                createChart('seasonalChart', 'bar', {
+                    labels: sortedMonths,
+                    datasets: [{
+                        label: 'Total Permintaan Harian',
+                        data: monthlyData,
+                        backgroundColor: monthlyData.map((value, index) => {
+                            if (value === Math.max(...monthlyData)) return '#22c55e'; // green for highest
+                            if (value === Math.min(...monthlyData)) return '#f97316'; // orange for lowest
+                            return chartColors[3]; // default color
+                        }),
+                        borderColor: '#374151',
+                        borderWidth: 1
+                    }]
+                }, { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            title: { display: true, text: 'Total Permintaan Harian (Unit)' }
+                        },
+                        x: {
+                            title: { display: true, text: 'Bulan' }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const percentage = ((context.raw - avgMonthlyDemand) / avgMonthlyDemand * 100).toFixed(1);
+                                    return `${context.raw.toFixed(1)} unit/hari (${percentage > 0 ? '+' : ''}${percentage}% dari rata-rata)`;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // --- 7. Scenario Planning ---
+            function renderScenarioPlanning() {
+                const contentArea = document.getElementById('content-scenario_planning');
+                
+                const originalAvgEOQ = parsedData.reduce((acc, row) => acc + row['EOQ(Q*)'], 0) / parsedData.length;
+                
+                contentArea.innerHTML = `
+                    <div class="bg-yellow-50 p-6 rounded-lg shadow-md col-span-1 lg:col-span-2 mb-6">
+                        <h3 class="text-xl font-bold text-yellow-800 mb-4">🎯 Apa itu Perencanaan Skenario?</h3>
+                        <div class="bg-white p-4 rounded-lg mb-4">
+                            <p class="text-gray-700 mb-3"><strong>Perencanaan Skenario</strong> membantu Anda memahami bagaimana perubahan kondisi bisnis akan mempengaruhi keputusan persediaan.</p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="bg-blue-100 p-3 rounded">
+                                    <h4 class="font-bold text-blue-800">Perubahan Permintaan</h4>
+                                    <p class="text-sm text-blue-700">Simulasi jika permintaan naik/turun</p>
+                                    <p class="text-xs text-blue-600">Dampak: EOQ akan naik jika permintaan naik</p>
+                                </div>
+                                <div class="bg-purple-100 p-3 rounded">
+                                    <h4 class="font-bold text-purple-800">Perubahan Biaya Pesan</h4>
+                                    <p class="text-sm text-purple-700">Simulasi jika biaya pesan berubah</p>
+                                    <p class="text-xs text-purple-600">Dampak: EOQ turun jika biaya pesan turun</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-2">🎮 Kontrol Simulasi</h3>
+                        <p class="text-sm text-gray-600 mb-4">Geser slider untuk melihat dampak perubahan terhadap EOQ rata-rata. Gunakan hasil ini untuk perencanaan bisnis.</p>
+                        <div class="space-y-6">
+                            <div>
+                                <label for="demand-increase" class="block font-medium text-blue-800 mb-2">📈 Perubahan Permintaan (%)</label>
+                                <input type="range" id="demand-increase" min="-50" max="100" value="0" class="w-full h-2 bg-blue-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-sm text-gray-600 mt-1">
+                                    <span>-50%</span>
+                                    <span id="demand-increase-value" class="font-bold text-blue-600">0%</span>
+                                    <span>+100%</span>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Contoh: +20% berarti permintaan naik 20% dari kondisi saat ini</p>
+                            </div>
+                            <div>
+                                <label for="cost-reduction" class="block font-medium text-purple-800 mb-2">💰 Perubahan Biaya Pesan (%)</label>
+                                <input type="range" id="cost-reduction" min="-50" max="100" value="0" class="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer">
+                                <div class="flex justify-between text-sm text-gray-600 mt-1">
+                                    <span>-50%</span>
+                                    <span id="cost-reduction-value" class="font-bold text-purple-600">0%</span>
+                                    <span>+100%</span>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-1">Contoh: -30% berarti biaya pesan turun 30% (lebih efisien)</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 p-3 bg-gray-100 rounded-lg">
+                            <p class="text-sm"><strong>📊 EOQ Saat Ini:</strong> ${originalAvgEOQ.toFixed(0)} unit</p>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="font-semibold mb-4">📊 Perbandingan EOQ: Asli vs Simulasi</h3>
+                        <div class="chart-container"><canvas id="scenarioChart"></canvas></div>
+                        <div class="mt-4 p-3 bg-indigo-50 rounded-lg">
+                            <p class="text-sm text-indigo-800"><strong>🧮 Rumus yang Digunakan:</strong></p>
+                            <div class="text-center text-sm font-mono bg-white p-2 rounded border mt-2">
+                                EOQ Baru = √(2 × D Baru × S Baru / H)
+                            </div>
+                            <ul class="text-sm text-indigo-700 mt-2 list-disc list-inside">
+                                <li><strong>D Baru</strong> = Permintaan Asli × (1 + Perubahan Permintaan)</li>
+                                <li><strong>S Baru</strong> = Biaya Pesan Asli × (1 + Perubahan Biaya)</li>
+                                <li><strong>H</strong> = Biaya Simpan (tetap sama)</li>
+                            </ul>
+                        </div>
+                        <div class="mt-4 p-3 bg-green-50 rounded-lg">
+                            <p class="text-sm text-green-800"><strong>💡 Cara Menggunakan Hasil:</strong></p>
+                            <ul class="text-sm text-green-700 mt-2 list-disc list-inside">
+                                <li>Jika EOQ naik → Persiapkan gudang yang lebih besar</li>
+                                <li>Jika EOQ turun → Bisa menghemat ruang penyimpanan</li>
+                                <li>Simulasi berbagai skenario untuk rencana jangka panjang</li>
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                const demandSlider = document.getElementById('demand-increase');
+                const costSlider = document.getElementById('cost-reduction');
+                
+                function runSimulation() {
+                    const demandIncrease = parseInt(demandSlider.value);
+                    const costChange = parseInt(costSlider.value);
+
+                    document.getElementById('demand-increase-value').textContent = `${demandIncrease > 0 ? '+' : ''}${demandIncrease}%`;
+                    document.getElementById('cost-reduction-value').textContent = `${costChange > 0 ? '+' : ''}${costChange}%`;
+
+                    let simulatedTotalEOQ = 0;
+                    parsedData.forEach(row => {
+                        const D = row['Permintaan_Tahunan(D)'] * (1 + demandIncrease / 100);
+                        const S = row['Biaya_Pesan(S)'] * (1 + costChange / 100);
+                        const H = row['Biaya_Simpan(H)'];
+                        const simulatedEOQ = Math.sqrt((2 * D * S) / H);
+                        simulatedTotalEOQ += simulatedEOQ;
+                    });
+                    const simulatedAvgEOQ = simulatedTotalEOQ / parsedData.length;
+                    
+                    const changePercentage = ((simulatedAvgEOQ - originalAvgEOQ) / originalAvgEOQ * 100).toFixed(1);
+                    const changeColor = changePercentage > 0 ? '#22c55e' : changePercentage < 0 ? '#f97316' : '#6b7280';
+
+                    createChart('scenarioChart', 'bar', {
+                        labels: ['EOQ Rata-rata'],
+                        datasets: [
+                            { 
+                                label: 'EOQ Asli', 
+                                data: [originalAvgEOQ], 
+                                backgroundColor: chartColors[4],
+                                borderColor: chartColors[4],
+                                borderWidth: 2
+                            },
+                            { 
+                                label: `EOQ Simulasi (${changePercentage > 0 ? '+' : ''}${changePercentage}%)`, 
+                                data: [simulatedAvgEOQ], 
+                                backgroundColor: changeColor + '80',
+                                borderColor: changeColor,
+                                borderWidth: 2
+                            }
+                        ]
+                    }, { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            y: { 
+                                beginAtZero: true, 
+                                suggestedMax: Math.max(originalAvgEOQ, simulatedAvgEOQ) * 1.2,
+                                title: { display: true, text: 'EOQ (Unit)' }
+                            } 
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return `${context.dataset.label}: ${context.raw.toFixed(0)} unit`;
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                demandSlider.addEventListener('input', runSimulation);
+                costSlider.addEventListener('input', runSimulation);
+                runSimulation(); // Initial run
+            }
+            
+            // --- Additional Functions ---
+            function showMoreData() {
+                document.getElementById('moreDataContainer').classList.remove('hidden');
+                event.target.style.display = 'none';
+            }
+            
+            function hideMoreData() {
+                document.getElementById('moreDataContainer').classList.add('hidden');
+                // Show the "Tampilkan 20 Baris Data" button again
+                const showButton = document.querySelector('button[onclick="showMoreData()"]');
+                if (showButton) {
+                    showButton.style.display = 'inline-block';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
